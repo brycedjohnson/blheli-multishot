@@ -4468,28 +4468,62 @@ wait_for_power_on_not_missing:
 	ljmp	init_no_signal			; If it is zero (pulses missing) - go back to detect input signal
 
 check_dshot_command:
+dshot_beep_1:
 	mov A, Rcp_Settings
 	subb A, #1
-	jnz ($+4)
+	jnz dshot_beep_2
 	call beep_f1
-	
+	jmp clear_dshot_settings
+dshot_beep_2:	
 	mov A, Rcp_Settings
 	subb A, #2
-	jnz ($+4)
+	jnz dshot_beep_3
 	call beep_f2
-		
+	jmp clear_dshot_settings
+dshot_beep_3:		
 	mov A, Rcp_Settings
 	subb A, #3
-	jnz ($+4)
+	jnz dshot_beep_4
 	call beep_f3
-
+	jmp clear_dshot_settings
+dshot_beep_4:
 	mov A, Rcp_Settings
 	subb A, #4
-	jnz ($+4)
+	jnz dshot_beep_5
 	call beep_f4
+	jmp clear_dshot_settings
+dshot_beep_5:
+	mov A, Rcp_Settings
+	subb A, #5
+	jnz dshot_direction
+	call beep_beacon
+	jmp clear_dshot_settings
+dshot_direction:	
+	mov A, Rcp_Settings ;regular motor direction
+	subb A, #6
+	jnz dshot_direction_reverse
+	mov A, Rcp_Settings_Cnt
+	clr C
+	subb A, #10
+	jnc dont_clear_dshot_settings
+	clr	Flags3.PGM_DIR_REV
+	jmp clear_dshot_settings
+dshot_direction_reverse:
+	mov A, Rcp_Settings ;reverse motor direction
+	subb A, #7
+	jnz dont_clear_dshot_settings
+	mov A, Rcp_Settings_Cnt
+	clr C
+	subb A, #10
+	jnc dont_clear_dshot_settings
+	setb Flags3.PGM_DIR_REV
 	
+	
+clear_dshot_settings:
 	mov Rcp_Settings, #0
 	mov Rcp_Settings_Cnt, #0
+	
+dont_clear_dshot_settings:
 	jmp wait_for_power_on_not_missing
 	
 ;**** **** **** **** **** **** **** **** **** **** **** **** ****
