@@ -671,23 +671,46 @@ t1_int_xor_ok:
 	cpl	A
 	swap A
 	anl	A, #0Fh
-	mov	Temp4, A
+	mov	 Temp4, A
+	
 	; Subtract 96 (still 12 bits)
 	clr	C
+	mov	A, Temp3
+	mov	Temp2, A
+	subb	A, #96	
+	mov	Temp3, A
 	mov	A, Temp4
 	subb	A, #0
 	mov	Temp4, A	
+	jnc t1_normal_range
 	
-	mov	A, Temp3
-	subb	A, #96
+	clr	C	
+	mov	A, Temp2  ;check for 0 or dshot command
+	mov	Temp4, #0
+	mov	Temp3, #0
+	mov	Temp2, #0		
+	jz t1_normal_range 
 	
-	jc	t1_dshot_set_range
 
+t1_dshot_set_range: ;We are in the special dshot range
+	rr	A ;divide by 2
+	mov Temp2, A
+	clr	C
+	subb A, Rcp_Settings
+	jz t1_dshot_set_valid
 
-
-t1_normal_range:
-	mov	Rcp_Settings, #0
+t1_dshot_set_invalid:
+	mov A, Temp2
+	mov	Rcp_Settings, A
 	mov	Rcp_Settings_Cnt, #0
+	mov	Temp2, #0
+	jmp t1_normal_range
+	
+t1_dshot_set_valid:
+	inc Rcp_Settings_Cnt
+	
+	
+t1_normal_range:
 	; Check for bidirectional operation (0=stop, 96-2095->fwd, 2096-4095->rev)
 	jnb	Flags3.PGM_BIDIR, t1_int_not_bidir	; If not bidirectional operation - branch
 
@@ -709,32 +732,6 @@ t1_normal_range:
 
 	setb	Flags2.RCP_DIR_REV
 	ajmp	t1_int_bidir_rev_chk
-
-t1_dshot_set_range:
-	add	A, #96 ;We are in the special dshot range
-	rrc	A ;divide by 2
-	mov Temp3, A
-	clr	C
-	subb A, Rcp_Settings
-	mov A, Temp3
-	jnc t1_dshot_set_valid
-
-t1_dshot_set_invalid:
-	mov	Rcp_Settings, #0
-	mov	Rcp_Settings_Cnt, #0
-	jmp t1_dshot_set_done
-	
-t1_dshot_set_valid:
-	mov	Rcp_Settings, A	
-	mov A, Rcp_Settings_Cnt
-	add	A, #1 
-	mov Rcp_Settings_Cnt, A
-	
-t1_dshot_set_done:
-	mov	Temp4, #0
-	mov	Temp3, #0
-	mov	Temp2, #0
-
 	
 t1_int_bidir_fwd:
 	jnb	Flags2.RCP_DIR_REV, t1_int_bidir_rev_chk	; If same direction - branch
@@ -4219,6 +4216,8 @@ ENDIF
 	clr	C
 	mov	A, Rcp_Outside_Range_Cnt			; Check if pulses were accepted
 	subb	A, #10
+	mov Rcp_Settings_Cnt, #0
+	mov Rcp_Settings, #0
 	jc	validate_rcp_start
 
 	; Setup timers for Multishot
@@ -4237,7 +4236,7 @@ ENDIF
 	call wait100ms						; Wait for new RC pulse
 	clr	C
 	mov	A, Rcp_Outside_Range_Cnt			; Check how many pulses were outside normal range ("900-2235us")
-	subb	A, #10
+	subb	A, #3
 	jc	validate_rcp_start
 
 	ajmp	init_no_signal
@@ -4451,41 +4450,48 @@ wait_for_power_on_no_beep:
 	jnz	wait_for_power_on_not_missing	; If it is not zero - proceed
 
 	jmp	init_no_signal				; If pulses missing - go back to detect input signal
-
-valid_dshot_settings:
-	call	switch_power_off		; Switch power off in case braking is set
-	call	wait1ms
-	mov	Temp1, #Pgm_Beacon_Strength
-	mov	Beep_Strength, @Temp1
-	clr 	IE_EA				; Disable all interrupts
-	call beep_beacon	; Signal that there is no signal
-	setb	IE_EA				; Enable all interrupts
-	mov	Temp1, #Pgm_Beep_Strength
-	mov	Beep_Strength, @Temp1
-	call wait100ms				; Wait for new RC pulse to be measured
-	jc	wait_for_power_on_loop;
 	
 wait_for_power_on_not_missing:
 	clr	C
-	mov	A, Rcp_Settings_Cnt			; Load new RC pulse setting value 
-	subb	A, #10		 		; Higher than 0
-	jc	valid_dshot_settings	 
+	mov	A, Rcp_Settings	 
+	subb	A, #1		 		; Higher than 1
+	jnc	check_dshot_command	 
 	
 	clr	C
 	mov	A, New_Rcp			; Load new RC pulse value
 	subb	A, #1		 		; Higher than stop
 	jc	wait_for_power_on_loop	; No - start over
 
-
-	
-
 	lcall wait100ms			; Wait to see if start pulse was only a glitch
 	mov	A, Rcp_Timeout_Cntd		; Load RC pulse timeout counter value
-	jnz	($+5)				; If it is not zero - proceed
-
+	jnz	init_start				; If it is not zero - proceed
 	ljmp	init_no_signal			; If it is zero (pulses missing) - go back to detect input signal
 
+check_dshot_command:
+	mov A, Rcp_Settings
+	subb A, #1
+	jnz ($+4)
+	call beep_f1
+	
+	mov A, Rcp_Settings
+	subb A, #2
+	jnz ($+4)
+	call beep_f2
+		
+	mov A, Rcp_Settings
+	subb A, #3
+	jnz ($+4)
+	call beep_f3
 
+	mov A, Rcp_Settings
+	subb A, #4
+	jnz ($+4)
+	call beep_f4
+	
+	mov Rcp_Settings, #0
+	mov Rcp_Settings_Cnt, #0
+	jmp wait_for_power_on_not_missing
+	
 ;**** **** **** **** **** **** **** **** **** **** **** **** ****
 ;
 ; Start entry point
