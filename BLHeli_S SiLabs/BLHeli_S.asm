@@ -236,11 +236,11 @@ ENDIF
 ;**** **** **** **** ****
 ; Programming defaults
 ;
-DEFAULT_PGM_STARTUP_PWR 				EQU 5 	; 1=0.031 2=0.047 3=0.063 4=0.094 5=0.125 6=0.188	7=0.25  8=0.38  9=0.50  10=0.75 11=1.00 12=1.25 13=1.50
+DEFAULT_PGM_STARTUP_PWR 				EQU 9 	; 1=0.031 2=0.047 3=0.063 4=0.094 5=0.125 6=0.188	7=0.25  8=0.38  9=0.50  10=0.75 11=1.00 12=1.25 13=1.50
 DEFAULT_PGM_COMM_TIMING				EQU 3 	; 1=Low 		2=MediumLow 	3=Medium 		4=MediumHigh 	5=High
-DEFAULT_PGM_DEMAG_COMP 				EQU 3 	; 1=Disabled	2=Low		3=High
+DEFAULT_PGM_DEMAG_COMP 				EQU 2 	; 1=Disabled	2=Low		3=High
 DEFAULT_PGM_DIRECTION				EQU 1 	; 1=Normal 	2=Reversed	3=Bidir		4=Bidir rev
-DEFAULT_PGM_BEEP_STRENGTH			EQU 91	; Beep strength
+DEFAULT_PGM_BEEP_STRENGTH			EQU 80	; Beep strength
 DEFAULT_PGM_BEACON_STRENGTH			EQU 80	; Beacon strength
 DEFAULT_PGM_BEACON_DELAY				EQU 3 	; 1=1m		2=2m			3=5m			4=10m		5=Infinite
 
@@ -251,8 +251,8 @@ DEFAULT_PGM_MAX_THROTTLE				EQU 240	; 4*240+1000=1960
 DEFAULT_PGM_CENTER_THROTTLE			EQU 125	; 4*125+1000=1500 (used in bidirectional mode)
 DEFAULT_PGM_ENABLE_TEMP_PROT	 		EQU 6 	; 0=Disabled	1=80C	2=90C	3=100C	4=110C	5=120C	6=130C	7=140C
 DEFAULT_PGM_ENABLE_POWER_PROT 		EQU 1 	; 1=Enabled 	0=Disabled
-DEFAULT_PGM_BRAKE_ON_STOP	 		EQU 1 	; 1=Enabled 	0=Disabled
-DEFAULT_PGM_LED_CONTROL	 			EQU 1 	; Byte for LED control. 2bits per LED, 0=Off, 1=On
+DEFAULT_PGM_BRAKE_ON_STOP	 		EQU 0 	; 1=Enabled 	0=Disabled
+DEFAULT_PGM_LED_CONTROL	 			EQU 0 	; Byte for LED control. 2bits per LED, 0=Off, 1=On
 
 ;**** **** **** **** ****
 ; Temporary register definitions
@@ -452,7 +452,7 @@ Temp_Storage:				DS	48		; Temporary storage
 ;**** **** **** **** ****
 CSEG AT 1A00h            ; "Eeprom" segment
 EEPROM_FW_MAIN_REVISION		EQU	16		; Main revision of the firmware
-EEPROM_FW_SUB_REVISION		EQU	65		; Sub revision of the firmware
+EEPROM_FW_SUB_REVISION		EQU	66		; Sub revision of the firmware
 EEPROM_LAYOUT_REVISION		EQU	33		; Revision of the EEPROM layout
 
 Eep_FW_Main_Revision:		DB	EEPROM_FW_MAIN_REVISION			; EEPROM firmware main revision number
@@ -4511,13 +4511,19 @@ dshot_direction:
 dshot_direction_reverse:
 	mov A, Rcp_Settings ;reverse motor direction
 	subb A, #7
-	jnz dont_clear_dshot_settings
+	jnz dshot_save_settings
 	mov A, Rcp_Settings_Cnt
 	clr C
 	subb A, #10
 	jnc dont_clear_dshot_settings
 	setb Flags3.PGM_DIR_REV
 	
+dshot_save_settings:
+	mov A, Rcp_Settings ;reverse motor direction
+	subb A, #12
+	jnz clear_dshot_settings
+	call erase_and_store_all_in_eeprom	
+	call	success_beep_inverted
 	
 clear_dshot_settings:
 	mov Rcp_Settings, #0
