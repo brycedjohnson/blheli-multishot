@@ -501,7 +501,7 @@ Eep_Pgm_LED_Control:		DB	DEFAULT_PGM_LED_CONTROL			; EEPROM copy of programmed L
 Eep_Dummy:				DB	0FFh							; EEPROM address for safety reason
 
 CSEG AT 1A60h
-Eep_Name:					DB	"16.65_Tones     "				; Name tag (16 Bytes)
+Eep_Name:					DB	"16.66_dshottest "				; Name tag (16 Bytes)
 
 ;**** **** **** **** ****
 Interrupt_Table_Definition		; SiLabs interrupts
@@ -4495,11 +4495,11 @@ dshot_beep_4:
 dshot_beep_5:
 	mov A, Rcp_Settings
 	subb A, #5
-	jnz dshot_direction
+	jnz dshot_direction_normal
 	call beep_beacon
 	jmp clear_dshot_settings
-dshot_direction:	
-	mov A, Rcp_Settings ;regular motor direction
+dshot_direction_normal:	
+	mov A, Rcp_Settings ;normal motor direction
 	subb A, #6
 	jnz dshot_direction_reverse
 	mov A, Rcp_Settings_Cnt
@@ -4518,12 +4518,22 @@ dshot_direction_reverse:
 	jnc dont_clear_dshot_settings
 	setb Flags3.PGM_DIR_REV
 	
-dshot_save_settings:
-	mov A, Rcp_Settings ;reverse motor direction
+dshot_save_settings: ;save not working
+	mov A, Rcp_Settings 
 	subb A, #12
 	jnz clear_dshot_settings
+	
+	jnb Flags3.PGM_DIR_REV, skip_save
+	mov	 Temp1, #Pgm_Direction	; Store
+	mov	A, @Temp1
+	cpl A
+	mov	 @Temp1, A
+	mov	Temp1, A
 	call erase_and_store_all_in_eeprom	
-	call	success_beep_inverted
+	call success_beep_inverted
+
+skip_save:	
+	call beep_f4
 	
 clear_dshot_settings:
 	mov Rcp_Settings, #0
