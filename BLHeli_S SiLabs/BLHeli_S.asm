@@ -361,6 +361,8 @@ Wt_Zc_Tout_Start_H:			DS	1		; Timer 3 start point for zero cross scan timeout (h
 Wt_Comm_Start_L:			DS	1		; Timer 3 start point from zero cross to commutation (lo byte)
 Wt_Comm_Start_H:			DS	1		; Timer 3 start point from zero cross to commutation (hi byte)
 
+Rcp_Settings:				DS	1		; New Dshot setting RC pulse value in dshot value
+Rcp_Settings_Cnt:			DS  1		; counter for dshot settings
 New_Rcp:					DS	1		; New RC pulse value in pca counts
 Rcp_Stop_Cnt:				DS	1		; Counter for RC pulses below stop value
 
@@ -672,18 +674,20 @@ t1_int_xor_ok:
 	mov	Temp4, A
 	; Subtract 96 (still 12 bits)
 	clr	C
-	mov	A, Temp3
-	subb	A, #96
-	mov	Temp3, A
 	mov	A, Temp4
 	subb	A, #0
-	mov	Temp4, A
-	jnc	($+8)
+	mov	Temp4, A	
+	
+	mov	A, Temp3
+	subb	A, #96
+	
+	jc	t1_dshot_set_range
 
-	mov	Temp4, #0
-	mov	Temp3, #0
-	mov	Temp2, #0
 
+
+t1_normal_range:
+	mov	Rcp_Settings, #0
+	mov	Rcp_Settings_Cnt, #0
 	; Check for bidirectional operation (0=stop, 96-2095->fwd, 2096-4095->rev)
 	jnb	Flags3.PGM_BIDIR, t1_int_not_bidir	; If not bidirectional operation - branch
 
@@ -706,6 +710,32 @@ t1_int_xor_ok:
 	setb	Flags2.RCP_DIR_REV
 	ajmp	t1_int_bidir_rev_chk
 
+t1_dshot_set_range:
+	add	A, #96 ;We are in the special dshot range
+	rrc	A ;divide by 2
+	mov Temp3, A
+	clr	C
+	subb A, Rcp_Settings
+	mov A, Temp3
+	jnc t1_dshot_set_valid
+
+t1_dshot_set_invalid:
+	mov	Rcp_Settings, #0
+	mov	Rcp_Settings_Cnt, #0
+	jmp t1_dshot_set_done
+	
+t1_dshot_set_valid:
+	mov	Rcp_Settings, A	
+	mov A, Rcp_Settings_Cnt
+	add	A, #1 
+	mov Rcp_Settings_Cnt, A
+	
+t1_dshot_set_done:
+	mov	Temp4, #0
+	mov	Temp3, #0
+	mov	Temp2, #0
+
+	
 t1_int_bidir_fwd:
 	jnb	Flags2.RCP_DIR_REV, t1_int_bidir_rev_chk	; If same direction - branch
 
@@ -4422,11 +4452,32 @@ wait_for_power_on_no_beep:
 
 	jmp	init_no_signal				; If pulses missing - go back to detect input signal
 
+valid_dshot_settings:
+	call	switch_power_off		; Switch power off in case braking is set
+	call	wait1ms
+	mov	Temp1, #Pgm_Beacon_Strength
+	mov	Beep_Strength, @Temp1
+	clr 	IE_EA				; Disable all interrupts
+	call beep_beacon	; Signal that there is no signal
+	setb	IE_EA				; Enable all interrupts
+	mov	Temp1, #Pgm_Beep_Strength
+	mov	Beep_Strength, @Temp1
+	call wait100ms				; Wait for new RC pulse to be measured
+	jc	wait_for_power_on_loop;
+	
 wait_for_power_on_not_missing:
+	clr	C
+	mov	A, Rcp_Settings_Cnt			; Load new RC pulse setting value 
+	subb	A, #10		 		; Higher than 0
+	jc	valid_dshot_settings	 
+	
 	clr	C
 	mov	A, New_Rcp			; Load new RC pulse value
 	subb	A, #1		 		; Higher than stop
 	jc	wait_for_power_on_loop	; No - start over
+
+
+	
 
 	lcall wait100ms			; Wait to see if start pulse was only a glitch
 	mov	A, Rcp_Timeout_Cntd		; Load RC pulse timeout counter value
