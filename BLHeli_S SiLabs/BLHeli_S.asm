@@ -4464,8 +4464,11 @@ wait_for_power_on_not_missing:
 
 	lcall wait100ms			; Wait to see if start pulse was only a glitch
 	mov	A, Rcp_Timeout_Cntd		; Load RC pulse timeout counter value
-	jnz	init_start				; If it is not zero - proceed
+	jnz	init_start_long_jump				; If it is not zero - proceed
 	ljmp	init_no_signal			; If it is zero (pulses missing) - go back to detect input signal
+
+init_start_long_jump:
+ljmp init_start
 
 check_dshot_command:
 dshot_beep_1:
@@ -4500,7 +4503,7 @@ dshot_beep_5:
 	jmp clear_dshot_settings
 dshot_direction_normal:	
 	mov A, Rcp_Settings ;normal motor direction
-	subb A, #6
+	subb A, #7
 	jnz dshot_direction_reverse
 	mov A, Rcp_Settings_Cnt
 	clr C
@@ -4510,7 +4513,7 @@ dshot_direction_normal:
 	jmp clear_dshot_settings
 dshot_direction_reverse:
 	mov A, Rcp_Settings ;reverse motor direction
-	subb A, #7
+	subb A, #8
 	jnz dshot_save_settings
 	mov A, Rcp_Settings_Cnt
 	clr C
@@ -4522,16 +4525,18 @@ dshot_save_settings: ;save not working
 	mov A, Rcp_Settings 
 	subb A, #12
 	jnz clear_dshot_settings
-	
+	mov	Flash_Key_1, #0A5h
+	mov	Flash_Key_2, #0F1h
 	jnb Flags3.PGM_DIR_REV, skip_save
 	mov	 Temp1, #Pgm_Direction	; Store
 	mov	A, @Temp1
-	cpl A
 	mov	 @Temp1, A
 	mov	Temp1, A
 	call erase_and_store_all_in_eeprom	
 	call success_beep_inverted
-
+	mov	Flash_Key_1, #0
+	mov	Flash_Key_2, #0
+	
 skip_save:	
 	call beep_f4
 	
