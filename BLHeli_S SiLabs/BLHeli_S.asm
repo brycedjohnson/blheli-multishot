@@ -4478,31 +4478,46 @@ dshot_beep_1:
 	mov A, Dshot_Settings
 	subb A, #1
 	jnz dshot_beep_2
+	clr 	IE_EA
 	call beep_f1
+	setb	IE_EA	
+	call wait100ms	
 	jmp clear_dshot_settings
 dshot_beep_2:	
 	mov A, Dshot_Settings
 	subb A, #2
 	jnz dshot_beep_3
+	clr 	IE_EA
 	call beep_f2
+	setb	IE_EA	
+	call wait100ms	
 	jmp clear_dshot_settings
 dshot_beep_3:		
 	mov A, Dshot_Settings
 	subb A, #3
 	jnz dshot_beep_4
+	clr 	IE_EA
 	call beep_f3
+	setb	IE_EA	
+	call wait100ms	
 	jmp clear_dshot_settings
 dshot_beep_4:
 	mov A, Dshot_Settings
 	subb A, #4
 	jnz dshot_beep_5
+	clr 	IE_EA
 	call beep_f4
+	setb	IE_EA	
+	call wait100ms		
 	jmp clear_dshot_settings
 dshot_beep_5:
 	mov A, Dshot_Settings
 	subb A, #5
 	jnz dshot_direction_normal
+	clr 	IE_EA
 	call beep_beacon
+	setb	IE_EA	
+	call wait100ms	
 	jmp clear_dshot_settings
 
 	; dshot_direction_normal:	
