@@ -361,8 +361,10 @@ Wt_Zc_Tout_Start_H:			DS	1		; Timer 3 start point for zero cross scan timeout (h
 Wt_Comm_Start_L:			DS	1		; Timer 3 start point from zero cross to commutation (lo byte)
 Wt_Comm_Start_H:			DS	1		; Timer 3 start point from zero cross to commutation (hi byte)
 
-Rcp_Settings:				DS	1		; New Dshot setting RC pulse value in dshot value
-Rcp_Settings_Cnt:			DS  1		; counter for dshot settings
+Dshot_Settings:				DS	1		; New Dshot setting RC pulse value in dshot value
+Dshot_Settings_Cnt:			DS  1		; counter for dshot settings
+Programmed_Direction:		DS  1
+
 New_Rcp:					DS	1		; New RC pulse value in pca counts
 Rcp_Stop_Cnt:				DS	1		; Counter for RC pulses below stop value
 
@@ -696,18 +698,18 @@ t1_dshot_set_range: ;We are in the special dshot range
 	rr	A ;divide by 2
 	mov Temp2, A
 	clr	C
-	subb A, Rcp_Settings
+	subb A, Dshot_Settings
 	jz t1_dshot_set_valid
 
 t1_dshot_set_invalid:
 	mov A, Temp2
-	mov	Rcp_Settings, A
-	mov	Rcp_Settings_Cnt, #0
+	mov	Dshot_Settings, A
+	mov	Dshot_Settings_Cnt, #0
 	mov	Temp2, #0
 	jmp t1_normal_range
 	
 t1_dshot_set_valid:
-	inc Rcp_Settings_Cnt
+	inc Dshot_Settings_Cnt
 	
 	
 t1_normal_range:
@@ -3226,7 +3228,8 @@ ret
 decode_settings:
 	; Load programmed direction
 	mov	Temp1, #Pgm_Direction	
-	mov	A, @Temp1				
+	mov	A, @Temp1		
+	mov	Programmed_Direction, A	
 	clr	C
 	subb	A, #3
 	setb	Flags3.PGM_BIDIR
@@ -4216,8 +4219,8 @@ ENDIF
 	clr	C
 	mov	A, Rcp_Outside_Range_Cnt			; Check if pulses were accepted
 	subb	A, #10
-	mov Rcp_Settings_Cnt, #0
-	mov Rcp_Settings, #0
+	mov Dshot_Settings_Cnt, #0
+	mov Dshot_Settings, #0
 	jc	validate_rcp_start
 
 	; Setup timers for Multishot
@@ -4453,7 +4456,7 @@ wait_for_power_on_no_beep:
 	
 wait_for_power_on_not_missing:
 	clr	C
-	mov	A, Rcp_Settings	 
+	mov	A, Dshot_Settings	 
 	subb	A, #1		 		; Higher than 1
 	jnc	check_dshot_command	 
 	
@@ -4472,77 +4475,115 @@ ljmp init_start
 
 check_dshot_command:
 dshot_beep_1:
-	mov A, Rcp_Settings
+	mov A, Dshot_Settings
 	subb A, #1
 	jnz dshot_beep_2
 	call beep_f1
 	jmp clear_dshot_settings
 dshot_beep_2:	
-	mov A, Rcp_Settings
+	mov A, Dshot_Settings
 	subb A, #2
 	jnz dshot_beep_3
 	call beep_f2
 	jmp clear_dshot_settings
 dshot_beep_3:		
-	mov A, Rcp_Settings
+	mov A, Dshot_Settings
 	subb A, #3
 	jnz dshot_beep_4
 	call beep_f3
 	jmp clear_dshot_settings
 dshot_beep_4:
-	mov A, Rcp_Settings
+	mov A, Dshot_Settings
 	subb A, #4
 	jnz dshot_beep_5
 	call beep_f4
 	jmp clear_dshot_settings
 dshot_beep_5:
-	mov A, Rcp_Settings
+	mov A, Dshot_Settings
 	subb A, #5
 	jnz dshot_direction_normal
 	call beep_beacon
 	jmp clear_dshot_settings
-dshot_direction_normal:	
-	mov A, Rcp_Settings ;normal motor direction
-	subb A, #7
+
+	; dshot_direction_normal:	
+	; mov A, Dshot_Settings ;normal motor direction
+	; subb A, #7
+	; jnz dshot_direction_reverse
+	; mov A, Dshot_Settings_Cnt
+	; clr C
+	; subb A, #5 ;sent 10 times.  Needs to receive it 5 times in a row
+	; jnc dont_clear_dshot_settings
+	; clr	Flags3.PGM_DIR_REV
+	; jmp clear_dshot_settings
+; dshot_direction_reverse:
+	; mov A, Dshot_Settings ;reverse motor direction
+	; subb A, #8
+	; jnz dshot_save_settings
+	; mov A, Dshot_Settings_Cnt
+	; clr C
+	; subb A, #5
+	; jnc dont_clear_dshot_settings
+	; setb Flags3.PGM_DIR_REV
+	
+dshot_direction_normal:
+	mov A, Dshot_Settings
+	subb A, #20
 	jnz dshot_direction_reverse
-	mov A, Rcp_Settings_Cnt
+	mov A, Dshot_Settings_Cnt
 	clr C
-	subb A, #10
+	subb A, #10 ;sent 10 times.  Needs to receive it 5 times in a row
 	jnc dont_clear_dshot_settings
-	clr	Flags3.PGM_DIR_REV
+
+	mov	A, Programmed_Direction
+	cjne A, #1, dshot_direction_normal_2
+	clr Flags3.PGM_DIR_REV
+dshot_direction_normal_2:	
+	cjne A, #2, clear_dshot_settings
+	setb Flags3.PGM_DIR_REV	
 	jmp clear_dshot_settings
+	
 dshot_direction_reverse:
-	mov A, Rcp_Settings ;reverse motor direction
-	subb A, #8
+	mov A, Dshot_Settings
+	subb A, #21
 	jnz dshot_save_settings
-	mov A, Rcp_Settings_Cnt
+	mov A, Dshot_Settings_Cnt
 	clr C
-	subb A, #10
+	subb A, #10 ;sent 10 times.  Needs to receive it 5 times in a row
 	jnc dont_clear_dshot_settings
+	
+	mov	A, Programmed_Direction
+	cjne A, #1, dshot_direction_reverse_2
 	setb Flags3.PGM_DIR_REV
+dshot_direction_reverse_2:
+	cjne A, #2, clear_dshot_settings
+	clr Flags3.PGM_DIR_REV
+	jmp clear_dshot_settings
+
+
 	
 dshot_save_settings: ;save not working
-	mov A, Rcp_Settings 
+	mov A, Dshot_Settings 
 	subb A, #12
 	jnz clear_dshot_settings
-	mov	Flash_Key_1, #0A5h
-	mov	Flash_Key_2, #0F1h
-	jnb Flags3.PGM_DIR_REV, skip_save
-	mov	 Temp1, #Pgm_Direction	; Store
-	mov	A, @Temp1
-	mov	 @Temp1, A
-	mov	Temp1, A
-	call erase_and_store_all_in_eeprom	
-	call success_beep_inverted
-	mov	Flash_Key_1, #0
-	mov	Flash_Key_2, #0
+	call beep_f4
+	; mov	Flash_Key_1, #0A5h
+	; mov	Flash_Key_2, #0F1h
+	; jnb Flags3.PGM_DIR_REV, skip_save
+	; mov	 Temp1, #Pgm_Direction	; Store
+	; mov	A, @Temp1
+	; mov	 @Temp1, A
+	; mov	Temp1, A
+	; call erase_and_store_all_in_eeprom	
+	; call success_beep_inverted
+	; mov	Flash_Key_1, #0
+	; mov	Flash_Key_2, #0
 	
 skip_save:	
 	call beep_f4
 	
 clear_dshot_settings:
-	mov Rcp_Settings, #0
-	mov Rcp_Settings_Cnt, #0
+	mov Dshot_Settings, #0
+	mov Dshot_Settings_Cnt, #0
 	
 dont_clear_dshot_settings:
 	jmp wait_for_power_on_not_missing
