@@ -236,11 +236,11 @@ ENDIF
 ;**** **** **** **** ****
 ; Programming defaults
 ;
-DEFAULT_PGM_STARTUP_PWR 				EQU 5 	; 1=0.031 2=0.047 3=0.063 4=0.094 5=0.125 6=0.188	7=0.25  8=0.38  9=0.50  10=0.75 11=1.00 12=1.25 13=1.50
+DEFAULT_PGM_STARTUP_PWR 				EQU 9 	; 1=0.031 2=0.047 3=0.063 4=0.094 5=0.125 6=0.188	7=0.25  8=0.38  9=0.50  10=0.75 11=1.00 12=1.25 13=1.50
 DEFAULT_PGM_COMM_TIMING				EQU 3 	; 1=Low 		2=MediumLow 	3=Medium 		4=MediumHigh 	5=High
-DEFAULT_PGM_DEMAG_COMP 				EQU 3 	; 1=Disabled	2=Low		3=High
+DEFAULT_PGM_DEMAG_COMP 				EQU 2 	; 1=Disabled	2=Low		3=High
 DEFAULT_PGM_DIRECTION				EQU 1 	; 1=Normal 	2=Reversed	3=Bidir		4=Bidir rev
-DEFAULT_PGM_BEEP_STRENGTH			EQU 91	; Beep strength
+DEFAULT_PGM_BEEP_STRENGTH			EQU 80	; Beep strength
 DEFAULT_PGM_BEACON_STRENGTH			EQU 80	; Beacon strength
 DEFAULT_PGM_BEACON_DELAY				EQU 3 	; 1=1m		2=2m			3=5m			4=10m		5=Infinite
 
@@ -251,8 +251,8 @@ DEFAULT_PGM_MAX_THROTTLE				EQU 240	; 4*240+1000=1960
 DEFAULT_PGM_CENTER_THROTTLE			EQU 125	; 4*125+1000=1500 (used in bidirectional mode)
 DEFAULT_PGM_ENABLE_TEMP_PROT	 		EQU 6 	; 0=Disabled	1=80C	2=90C	3=100C	4=110C	5=120C	6=130C	7=140C
 DEFAULT_PGM_ENABLE_POWER_PROT 		EQU 1 	; 1=Enabled 	0=Disabled
-DEFAULT_PGM_BRAKE_ON_STOP	 		EQU 1 	; 1=Enabled 	0=Disabled
-DEFAULT_PGM_LED_CONTROL	 			EQU 1 	; Byte for LED control. 2bits per LED, 0=Off, 1=On
+DEFAULT_PGM_BRAKE_ON_STOP	 		EQU 0 	; 1=Enabled 	0=Disabled
+DEFAULT_PGM_LED_CONTROL	 			EQU 0 	; Byte for LED control. 2bits per LED, 0=Off, 1=On
 
 ;**** **** **** **** ****
 ; Temporary register definitions
@@ -361,6 +361,10 @@ Wt_Zc_Tout_Start_H:			DS	1		; Timer 3 start point for zero cross scan timeout (h
 Wt_Comm_Start_L:			DS	1		; Timer 3 start point from zero cross to commutation (lo byte)
 Wt_Comm_Start_H:			DS	1		; Timer 3 start point from zero cross to commutation (hi byte)
 
+Dshot_Settings:				DS	1		; New Dshot setting RC pulse value in dshot value
+Dshot_Settings_Cnt:			DS  1		; counter for dshot settings
+Programmed_Direction:		DS  1
+
 New_Rcp:					DS	1		; New RC pulse value in pca counts
 Rcp_Stop_Cnt:				DS	1		; Counter for RC pulses below stop value
 
@@ -450,7 +454,7 @@ Temp_Storage:				DS	48		; Temporary storage
 ;**** **** **** **** ****
 CSEG AT 1A00h            ; "Eeprom" segment
 EEPROM_FW_MAIN_REVISION		EQU	16		; Main revision of the firmware
-EEPROM_FW_SUB_REVISION		EQU	65		; Sub revision of the firmware
+EEPROM_FW_SUB_REVISION		EQU	66		; Sub revision of the firmware
 EEPROM_LAYOUT_REVISION		EQU	33		; Revision of the EEPROM layout
 
 Eep_FW_Main_Revision:		DB	EEPROM_FW_MAIN_REVISION			; EEPROM firmware main revision number
@@ -499,7 +503,7 @@ Eep_Pgm_LED_Control:		DB	DEFAULT_PGM_LED_CONTROL			; EEPROM copy of programmed L
 Eep_Dummy:				DB	0FFh							; EEPROM address for safety reason
 
 CSEG AT 1A60h
-Eep_Name:					DB	"16.65_Tones     "				; Name tag (16 Bytes)
+Eep_Name:					DB	"16.66_dshottest "				; Name tag (16 Bytes)
 
 ;**** **** **** **** ****
 Interrupt_Table_Definition		; SiLabs interrupts
@@ -669,21 +673,46 @@ t1_int_xor_ok:
 	cpl	A
 	swap A
 	anl	A, #0Fh
-	mov	Temp4, A
+	mov	 Temp4, A
+	
 	; Subtract 96 (still 12 bits)
 	clr	C
 	mov	A, Temp3
-	subb	A, #96
+	mov	Temp2, A
+	subb	A, #96	
 	mov	Temp3, A
 	mov	A, Temp4
 	subb	A, #0
-	mov	Temp4, A
-	jnc	($+8)
-
+	mov	Temp4, A	
+	jnc t1_normal_range
+	
+	clr	C	
+	mov	A, Temp2  ;check for 0 or dshot command
 	mov	Temp4, #0
 	mov	Temp3, #0
-	mov	Temp2, #0
+	mov	Temp2, #0		
+	jz t1_normal_range 
+	
 
+t1_dshot_set_range: ;We are in the special dshot range
+	rr	A ;divide by 2
+	mov Temp2, A
+	clr	C
+	subb A, Dshot_Settings
+	jz t1_dshot_set_valid
+
+t1_dshot_set_invalid:
+	mov A, Temp2
+	mov	Dshot_Settings, A
+	mov	Dshot_Settings_Cnt, #0
+	mov	Temp2, #0
+	jmp t1_normal_range
+	
+t1_dshot_set_valid:
+	inc Dshot_Settings_Cnt
+	
+	
+t1_normal_range:
 	; Check for bidirectional operation (0=stop, 96-2095->fwd, 2096-4095->rev)
 	jnb	Flags3.PGM_BIDIR, t1_int_not_bidir	; If not bidirectional operation - branch
 
@@ -705,7 +734,7 @@ t1_int_xor_ok:
 
 	setb	Flags2.RCP_DIR_REV
 	ajmp	t1_int_bidir_rev_chk
-
+	
 t1_int_bidir_fwd:
 	jnb	Flags2.RCP_DIR_REV, t1_int_bidir_rev_chk	; If same direction - branch
 
@@ -3199,7 +3228,8 @@ ret
 decode_settings:
 	; Load programmed direction
 	mov	Temp1, #Pgm_Direction	
-	mov	A, @Temp1				
+	mov	A, @Temp1		
+	mov	Programmed_Direction, A	
 	clr	C
 	subb	A, #3
 	setb	Flags3.PGM_BIDIR
@@ -4189,6 +4219,8 @@ ENDIF
 	clr	C
 	mov	A, Rcp_Outside_Range_Cnt			; Check if pulses were accepted
 	subb	A, #10
+	mov Dshot_Settings_Cnt, #0
+	mov Dshot_Settings, #0
 	jc	validate_rcp_start
 
 	; Setup timers for Multishot
@@ -4207,7 +4239,7 @@ ENDIF
 	call wait100ms						; Wait for new RC pulse
 	clr	C
 	mov	A, Rcp_Outside_Range_Cnt			; Check how many pulses were outside normal range ("900-2235us")
-	subb	A, #10
+	subb	A, #3
 	jc	validate_rcp_start
 
 	ajmp	init_no_signal
@@ -4421,8 +4453,13 @@ wait_for_power_on_no_beep:
 	jnz	wait_for_power_on_not_missing	; If it is not zero - proceed
 
 	jmp	init_no_signal				; If pulses missing - go back to detect input signal
-
+	
 wait_for_power_on_not_missing:
+	clr	C
+	mov	A, Dshot_Settings	 
+	subb	A, #1		 		; Higher than 1
+	jnc	check_dshot_command	 
+	
 	clr	C
 	mov	A, New_Rcp			; Load new RC pulse value
 	subb	A, #1		 		; Higher than stop
@@ -4430,11 +4467,142 @@ wait_for_power_on_not_missing:
 
 	lcall wait100ms			; Wait to see if start pulse was only a glitch
 	mov	A, Rcp_Timeout_Cntd		; Load RC pulse timeout counter value
-	jnz	($+5)				; If it is not zero - proceed
-
+	jnz	init_start_long_jump				; If it is not zero - proceed
 	ljmp	init_no_signal			; If it is zero (pulses missing) - go back to detect input signal
 
+init_start_long_jump:
+ljmp init_start
 
+check_dshot_command:
+dshot_beep_1:
+	mov A, Dshot_Settings
+	subb A, #1
+	jnz dshot_beep_2
+	clr 	IE_EA
+	call beep_f1
+	setb	IE_EA	
+	call wait100ms	
+	jmp clear_dshot_settings
+dshot_beep_2:	
+	mov A, Dshot_Settings
+	subb A, #2
+	jnz dshot_beep_3
+	clr 	IE_EA
+	call beep_f2
+	setb	IE_EA	
+	call wait100ms	
+	jmp clear_dshot_settings
+dshot_beep_3:		
+	mov A, Dshot_Settings
+	subb A, #3
+	jnz dshot_beep_4
+	clr 	IE_EA
+	call beep_f3
+	setb	IE_EA	
+	call wait100ms	
+	jmp clear_dshot_settings
+dshot_beep_4:
+	mov A, Dshot_Settings
+	subb A, #4
+	jnz dshot_beep_5
+	clr 	IE_EA
+	call beep_f4
+	setb	IE_EA	
+	call wait100ms		
+	jmp clear_dshot_settings
+dshot_beep_5:
+	mov A, Dshot_Settings
+	subb A, #5
+	jnz dshot_direction_normal
+	clr 	IE_EA
+	call beep_beacon
+	setb	IE_EA	
+	call wait100ms	
+	jmp clear_dshot_settings
+
+	; dshot_direction_normal:	
+	; mov A, Dshot_Settings ;normal motor direction
+	; subb A, #7
+	; jnz dshot_direction_reverse
+	; mov A, Dshot_Settings_Cnt
+	; clr C
+	; subb A, #5 ;sent 10 times.  Needs to receive it 5 times in a row
+	; jnc dont_clear_dshot_settings
+	; clr	Flags3.PGM_DIR_REV
+	; jmp clear_dshot_settings
+; dshot_direction_reverse:
+	; mov A, Dshot_Settings ;reverse motor direction
+	; subb A, #8
+	; jnz dshot_save_settings
+	; mov A, Dshot_Settings_Cnt
+	; clr C
+	; subb A, #5
+	; jnc dont_clear_dshot_settings
+	; setb Flags3.PGM_DIR_REV
+	
+dshot_direction_normal:
+	mov A, Dshot_Settings
+	subb A, #20
+	jnz dshot_direction_reverse
+	mov A, Dshot_Settings_Cnt
+	clr C
+	subb A, #10 ;sent 10 times.  Needs to receive it 5 times in a row
+	jnc dont_clear_dshot_settings
+
+	mov	A, Programmed_Direction
+	cjne A, #1, dshot_direction_normal_2
+	clr Flags3.PGM_DIR_REV
+dshot_direction_normal_2:	
+	cjne A, #2, clear_dshot_settings
+	setb Flags3.PGM_DIR_REV	
+	jmp clear_dshot_settings
+	
+dshot_direction_reverse:
+	mov A, Dshot_Settings
+	subb A, #21
+	jnz dshot_save_settings
+	mov A, Dshot_Settings_Cnt
+	clr C
+	subb A, #10 ;sent 10 times.  Needs to receive it 5 times in a row
+	jnc dont_clear_dshot_settings
+	
+	mov	A, Programmed_Direction
+	cjne A, #1, dshot_direction_reverse_2
+	setb Flags3.PGM_DIR_REV
+dshot_direction_reverse_2:
+	cjne A, #2, clear_dshot_settings
+	clr Flags3.PGM_DIR_REV
+	jmp clear_dshot_settings
+
+
+	
+dshot_save_settings: ;save not working
+	mov A, Dshot_Settings 
+	subb A, #12
+	jnz clear_dshot_settings
+	call beep_f4
+	; mov	Flash_Key_1, #0A5h
+	; mov	Flash_Key_2, #0F1h
+	; jnb Flags3.PGM_DIR_REV, skip_save
+	; mov	 Temp1, #Pgm_Direction	; Store
+	; mov	A, @Temp1
+	; mov	 @Temp1, A
+	; mov	Temp1, A
+	; call erase_and_store_all_in_eeprom	
+	; call success_beep_inverted
+	; mov	Flash_Key_1, #0
+	; mov	Flash_Key_2, #0
+	
+skip_save:	
+	call beep_f4
+	
+clear_dshot_settings:
+	mov Dshot_Settings, #0
+	mov Dshot_Settings_Cnt, #0
+	
+dont_clear_dshot_settings:
+	jmp wait_for_power_on_not_missing
+	
 ;**** **** **** **** **** **** **** **** **** **** **** **** ****
 ;
 ; Start entry point

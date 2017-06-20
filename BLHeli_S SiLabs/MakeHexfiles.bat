@@ -13,7 +13,7 @@ DEL Output\*.* /Q
 RMDIR Output
 MKDIR Output
 MKDIR Output\Hex
-SET Revision=REV16_65
+SET Revision=REV16_66
 SET KeilPath=C:\SiliconLabs\SimplicityStudio\v3\developer\toolchains\keil_8051\9.53\BIN
 
 @ECHO Revision: %Revision% >> MakeHex_Result.txt
@@ -205,14 +205,13 @@ SET ESCNAME=%ESC%%FETON_DELAY%
 call :compile_code
 goto :eof
 
-
 :compile_code
 @ECHO compiling %ESCNAME%  
 @ECHO. >> MakeHex_Result.txt
 @ECHO ********************************************************************  >> MakeHex_Result.txt
 @ECHO %ESCNAME%  >> MakeHex_Result.txt
 @ECHO ********************************************************************  >> MakeHex_Result.txt
-%KeilPath%\AX51.exe "BLHeli_S.asm" DEFINE(ESCNO=%ESCNO%) DEFINE(MCU_48MHZ=%MCU_48MHZ%) DEFINE(FETON_DELAY=%FETON_DELAY%) OBJECT(Output\%ESCNAME%_%Revision%.OBJ) DEBUG MACRO NOMOD51 COND SYMBOLS PAGEWIDTH(120) PAGELENGTH(65) >> MakeHex_Result.txt
+%KeilPath%\AX51.exe "BLHeli_S.asm" DEFINE(ESCNO=%ESCNO%) DEFINE(MCU_48MHZ=%MCU_48MHZ%) DEFINE(FETON_DELAY=%FETON_DELAY%) OBJECT(Output\%ESCNAME%_%Revision%.OBJ) DEBUG MACRO NOMOD51 COND SYMBOLS PAGEWIDTH(120) PAGELENGTH(65) EP >> MakeHex_Result.txt
 %KeilPath%\LX51.exe "Output\%ESCNAME%_%Revision%.OBJ" TO "Output\%ESCNAME%_%Revision%.OMF" PAGEWIDTH (120) PAGELENGTH (65) >> MakeHex_Result.txt
 %KeilPath%\Ohx51 "Output\%ESCNAME%_%Revision%.OMF" "HEXFILE (Output\%ESCNAME%_%Revision%.HEX)" "H386" >> MakeHex_Result.txt
 copy "Output\%ESCNAME%_%Revision%.HEX" "Output\Hex\%ESCNAME%_%Revision%.HEX" > nul
